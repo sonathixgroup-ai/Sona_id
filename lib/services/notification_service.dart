@@ -1,236 +1,175 @@
-import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:thix_id/supabase/supabase_config.dart';
+import 'dart:async';
 
 class NotificationService {
-  NotificationService({SupabaseClient? client})
-      : _client = client ?? SupabaseConfig.client;
-
   final SupabaseClient _client;
-<<<<<<< Updated upstream
+  NotificationService({SupabaseClient? client}) : _client = client ?? SupabaseConfig.client;
 
-  NotificationService({SupabaseClient? client})
-      : _client = client ?? SupabaseConfig.client;
-=======
->>>>>>> Stashed changes
+  /// IMPORTANT: In this Supabase project, the verified table name is `notifications`.
+  ///
+  /// We still normalize rows so the UI always receives:
+  /// `{id,user_id,type,title,body,read,data,created_at}` regardless of DB column variants.
+  static const String _table = 'notifications';
 
-  static const String _table = 'thix_notifications';
-  static const Duration _pollInterval = Duration(seconds: 5);
-  static const int _maxNotifications = 50;
+  static bool _isPermanentRealtimeError(RealtimeSubscribeStatus status, Object? err) {
+    if (status == RealtimeSubscribeStatus.channelError) return true;
+    final msg = (err ?? '').toString().toLowerCase();
+    // Common permanent-ish causes: table missing, publication missing, RLS denied.
+    if (msg.contains('permission denied')) return true;
+    if (msg.contains('rls')) return true;
+    if (msg.contains('relation') && msg.contains('does not exist')) return true;
+    if (msg.contains('schema cache')) return true;
+    return false;
+  }
 
-<<<<<<< Updated upstream
-  /// Normalise les données quel que soit le nom des colonnes (flexible)
-  Map<String, dynamic> _normalizeRow(Map<String, dynamic> row) {
-    final data = (row['data'] is Map)
-        ? (row['data'] as Map).cast<String, dynamic>()
-        : (row['payload'] is Map)
-            ? (row['payload'] as Map).cast<String, dynamic>()
-            : <String, dynamic>{};
-
-    final read = (row['read'] as bool?) ?? (row['seen'] as bool?) ?? false;
-
-    return {
-      'id': row['id'],
-      'user_id': row['user_id'],
-      'type': (row['type'] ?? row['kind'] ?? 'generic').toString(),
-      'title': (row['title'] ?? 'Notification').toString(),
-      'body': (row['body'] ?? row['message'] ?? row['content'] ?? '').toString(),
+  Map<String, dynamic> _normalizeRow(Map<String, dynamic> r) {
+    final data = (r['data'] is Map)
+        ? (r['data'] as Map).cast<String, dynamic>()
+        : (r['payload'] is Map)
+            ? (r['payload'] as Map).cast<String, dynamic>()
+            : const <String, dynamic>{};
+    final read = (r['read'] as bool?) ?? (r['seen'] as bool?) ?? false;
+    return <String, dynamic>{
+      'id': r['id'],
+      'user_id': r['user_id'],
+      'type': (r['type'] ?? r['kind'] ?? 'generic').toString(),
+      'title': (r['title'] ?? 'Notification').toString(),
+      'body': (r['body'] ?? r['message'] ?? r['content'] ?? '').toString(),
       'read': read,
       'data': data,
-      'created_at': row['created_at'],
+      'created_at': r['created_at'],
     };
   }
 
-  /// Stream de notifications avec polling (stable et simple)
-=======
-  // ==========================================================================
-  // STREAMS SIMPLES (polling uniquement, pas de Realtime)
-  // ==========================================================================
-
-  /// Stream des notifications personnelles (polling toutes les 5 secondes)
->>>>>>> Stashed changes
+  /// Realtime stream (preferred): uses `postgres_changes` then refetches.
+  /// Falls back to polling if Realtime cannot subscribe.
   Stream<List<Map<String, dynamic>>> streamForUser(String uid) {
-    final controller = StreamController<List<Map<String, dynamic>>>.broadcast();
+    // IMPORTANT: This must emit AFTER the first listener is attached.
+    // A broadcast StreamController will drop events added before any listener
+    // subscribes (which makes the UI look “stuck loading”).
+    late final StreamController<List<Map<String, dynamic>>> controller;
+    final authUid = _client.auth.currentUser?.id;
+    if (authUid != null && authUid != uid) {
+      debugPrint('NotificationService: streamForUser uid mismatch. param=$uid auth=$authUid; using auth uid.');
+      uid = authUid;
+    }
+
+    final filter = PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: uid);
+    RealtimeChannel? channel;
+    var closedRetries = 0;
+    Timer? retryTimer;
+    var isCancelled = false;
     Timer? pollTimer;
-    bool isActive = true;
+    var polling = false;
 
-    Future<void> fetch() async {
-      if (!isActive || controller.isClosed) return;
-
+    Future<void> emitLatest() async {
       try {
-<<<<<<< Updated upstream
-        final rows = await _client
-=======
-        final response = await _client
->>>>>>> Stashed changes
-            .from(_table)
-            .select('*')
-            .eq('user_id', uid)
-            .order('created_at', ascending: false)
-<<<<<<< Updated upstream
-            .limit(50);
-
+        final rows = await _client.from(_table).select('*').eq('user_id', uid).order('created_at', ascending: false).limit(50);
         final list = (rows is List)
-            ? rows
-                .map((e) => _normalizeRow((e as Map).cast<String, dynamic>()))
-                .toList()
-            : <Map<String, dynamic>>[];
-
-        if (!controller.isClosed) controller.add(list);
-=======
-            .limit(_maxNotifications);
-
-        final notifications = response is List
-            ? response
-                .map((e) => _normalizeRow(e as Map<String, dynamic>))
-                .toList(growable: false)
-            : <Map<String, dynamic>>[];
-
-        if (!controller.isClosed) controller.add(notifications);
->>>>>>> Stashed changes
+            ? rows.map((e) => _normalizeRow((e as Map).cast<String, dynamic>())).toList(growable: false)
+            : const <Map<String, dynamic>>[];
+        debugPrint('NotificationService: emitLatest ok uid=$uid count=${list.length}');
+        controller.add(list);
       } catch (e) {
-        debugPrint('NotificationService: fetch failed for uid=$uid | error=$e');
-        if (!controller.isClosed) controller.add([]);
+        debugPrint('NotificationService: emitLatest failed uid=$uid err=$e');
+        controller.add(const <Map<String, dynamic>>[]);
       }
     }
 
-    controller.onListen = () {
-      isActive = true;
-      unawaited(fetch());
-<<<<<<< Updated upstream
-      pollTimer = Timer.periodic(const Duration(seconds: 4), (_) => unawaited(fetch()));
-=======
-      pollTimer = Timer.periodic(_pollInterval, (_) => unawaited(fetch()));
->>>>>>> Stashed changes
-    };
-
-    controller.onCancel = () {
-      isActive = false;
+    void startPolling() {
+      if (polling) return;
+      polling = true;
+      debugPrint('NotificationService: switching to polling fallback uid=$uid');
       pollTimer?.cancel();
-      controller.close();
-    };
+      pollTimer = Timer.periodic(const Duration(seconds: 3), (_) => unawaited(emitLatest()));
+    }
 
-    return controller.stream;
-  }
+    controller = StreamController<List<Map<String, dynamic>>>.broadcast(
+      onListen: () {
+        // First paint: fetch current state.
+        unawaited(emitLatest());
+      },
+    );
 
-<<<<<<< Updated upstream
-  /// Nombre de notifications non lues
-=======
-  /// Stream des notifications broadcast (user_id = null)
-  Stream<List<Map<String, dynamic>>> streamBroadcastOnly() {
-    final controller = StreamController<List<Map<String, dynamic>>>.broadcast();
-    Timer? pollTimer;
-    bool isActive = true;
+    Future<void> subscribeOrRetry() async {
+      if (isCancelled) return;
+      retryTimer?.cancel();
+      if (polling) return;
 
-    Future<void> fetch() async {
-      if (!isActive) return;
+      // Recreate a fresh channel on every attempt.
       try {
-        final response = await _client
-            .from(_table)
-            .select('*')
-            .is_('user_id', null)
-            .order('created_at', ascending: false)
-            .limit(_maxNotifications);
+        if (channel != null) await _client.removeChannel(channel!);
+      } catch (_) {}
 
-        final notifications = response is List
-            ? response
-                .map((e) => _normalizeRow(e as Map<String, dynamic>))
-                .toList(growable: false)
-            : <Map<String, dynamic>>[];
+      channel = _client.channel('notifications:user:$uid');
+      try {
+        channel!
+            .onPostgresChanges(
+              event: PostgresChangeEvent.all,
+              schema: 'public',
+              table: _table,
+              filter: filter,
+              callback: (payload) {
+                debugPrint('NotificationService: realtime event uid=$uid event=${payload.eventType} table=${payload.table}');
+                emitLatest();
+              },
+            )
+            .subscribe((status, err) {
+              debugPrint('NotificationService: subscribe status=$status err=$err uid=$uid');
+              // We observe occasional `closed` statuses before the channel stabilizes.
+              // If RLS rejects or connection is unstable, retry with backoff.
+              if (isCancelled) return;
 
-        if (!controller.isClosed) controller.add(notifications);
+              if (_isPermanentRealtimeError(status, err)) {
+                // Do not loop forever: treat this as a configuration/schema problem and
+                // fall back to polling so the UI stays usable.
+                startPolling();
+                return;
+              }
+
+              final shouldRetry = err != null || status == RealtimeSubscribeStatus.closed;
+              if (!shouldRetry) {
+                closedRetries = 0;
+                return;
+              }
+              closedRetries = (closedRetries + 1).clamp(1, 10);
+              final delayMs = (500 * (1 << (closedRetries - 1))).clamp(500, 8000);
+              retryTimer?.cancel();
+              retryTimer = Timer(Duration(milliseconds: delayMs), () {
+                debugPrint('NotificationService: retry subscribe (attempt=$closedRetries, delay=${delayMs}ms) uid=$uid');
+                unawaited(subscribeOrRetry());
+              });
+            });
       } catch (e) {
-        debugPrint('NotificationService: broadcast fetch failed err=$e');
-        if (!controller.isClosed) controller.add([]);
+        debugPrint('NotificationService: realtime wiring failed, falling back to polling. err=$e');
+        startPolling();
       }
     }
 
-    controller.onListen = () {
-      isActive = true;
-      unawaited(fetch());
-      pollTimer = Timer.periodic(_pollInterval, (_) => unawaited(fetch()));
-    };
+    unawaited(subscribeOrRetry());
 
-    controller.onCancel = () {
-      isActive = false;
+    controller.onCancel = () async {
+      isCancelled = true;
+      retryTimer?.cancel();
       pollTimer?.cancel();
-      controller.close();
+      final ch = channel;
+      if (ch != null) await _client.removeChannel(ch);
     };
 
     return controller.stream;
   }
 
-  /// Stream des notifications personnelles + broadcast (mélangées)
-  Stream<List<Map<String, dynamic>>> streamForHome({String? uid}) {
-    if (uid == null || uid.trim().isEmpty) {
-      return streamBroadcastOnly();
-    }
-
-    final controller = StreamController<List<Map<String, dynamic>>>.broadcast();
-    List<Map<String, dynamic>> personal = [];
-    List<Map<String, dynamic>> broadcast = [];
-    StreamSubscription? personalSub;
-    StreamSubscription? broadcastSub;
-
-    void emitMerged() {
-      final merged = <Map<String, dynamic>>[...personal, ...broadcast];
-      merged.sort((a, b) {
-        final aDate = DateTime.tryParse(a['created_at']?.toString() ?? '');
-        final bDate = DateTime.tryParse(b['created_at']?.toString() ?? '');
-        if (aDate == null && bDate == null) return 0;
-        if (aDate == null) return 1;
-        if (bDate == null) return -1;
-        return bDate.compareTo(aDate);
-      });
-
-      final seenIds = <String>{};
-      final unique = <Map<String, dynamic>>[];
-      for (final item in merged) {
-        final id = item['id']?.toString() ?? '';
-        if (id.isEmpty || seenIds.add(id)) {
-          unique.add(item);
-        }
-      }
-
-      if (!controller.isClosed) controller.add(unique);
-    }
-
-    controller
-      ..onListen = () {
-        personalSub = streamForUser(uid).listen((data) {
-          personal = data;
-          emitMerged();
-        });
-        broadcastSub = streamBroadcastOnly().listen((data) {
-          broadcast = data;
-          emitMerged();
-        });
-      }
-      ..onCancel = () async {
-        await personalSub?.cancel();
-        await broadcastSub?.cancel();
-      };
-
-    return controller.stream;
-  }
-
-  /// Stream du nombre de notifications non lues
->>>>>>> Stashed changes
+  /// Convenience stream that exposes the number of unread notifications.
+  ///
+  /// This is used for red badges (Home buttons, bell icon, etc.).
   Stream<int> streamUnreadCount(String uid) {
     return streamForUser(uid)
-        .map((notifications) => notifications.where((n) => n['read'] != true).length)
+        .map((rows) => rows.where((r) => (r['read'] as bool?) != true).length)
         .distinct();
   }
 
-<<<<<<< Updated upstream
-  /// Ajouter une notification
-=======
-  // ==========================================================================
-  // MÉTHODES D'ACTION
-  // ==========================================================================
-
->>>>>>> Stashed changes
   Future<void> add({
     required String toUid,
     required String type,
@@ -239,139 +178,60 @@ class NotificationService {
     Map<String, dynamic>? data,
   }) async {
     try {
-      await _client.from(_table).insert({
-        'user_id': toUid,
-        'type': type,
-        'title': title,
-        'body': body,
-        'read': false,
-<<<<<<< Updated upstream
-        'data': data ?? <String, dynamic>{},
-        'created_at': DateTime.now().toUtc().toIso8601String(),
-      });
-    } catch (e) {
-      debugPrint('NotificationService: add failed to=$toUid type=$type | error=$e');
-      // Tentative legacy (anciens noms de colonnes)
+      // Try the richer schema first.
       try {
         await _client.from(_table).insert({
           'user_id': toUid,
+          'type': type,
           'title': title,
-          'message': body,
-          'seen': false,
+          'body': body,
+          'read': false,
+          'data': data ?? const <String, dynamic>{},
           'created_at': DateTime.now().toUtc().toIso8601String(),
         });
-      } catch (e2) {
-        debugPrint('NotificationService: legacy insert also failed | error=$e2');
-        rethrow;
+        return;
+      } catch (e) {
+        debugPrint('NotificationService: insert with (type,body,read,data) failed, retrying legacy columns. err=$e');
       }
-=======
-        'data': data ?? {},
+      // Legacy/simple schema compatibility.
+      await _client.from(_table).insert({
+        'user_id': toUid,
+        'title': title,
+        'message': body,
+        'seen': false,
         'created_at': DateTime.now().toUtc().toIso8601String(),
       });
     } catch (e) {
-      debugPrint('NotificationService: add failed err=$e');
+      debugPrint('NotificationService: add failed to=$toUid type=$type err=$e');
+      rethrow;
     }
   }
 
-  Future<void> markRead({
-    required String uid,
-    required String notificationId,
-  }) async {
+  Future<void> markRead({required String uid, required String notificationId}) async {
     try {
-      await _client
-          .from(_table)
-          .update({'read': true})
-          .eq('id', notificationId)
-          .eq('user_id', uid);
-    } catch (e) {
-      debugPrint('NotificationService: markRead failed err=$e');
->>>>>>> Stashed changes
-    }
-  }
-
-  /// Marquer une notification comme lue
-  Future<void> markRead({
-    required String uid,
-    required String notificationId,
-  }) async {
-    try {
-      await _client
-          .from(_table)
-          .update({'read': true})
-          .eq('id', notificationId)
-          .eq('user_id', uid);
-    } catch (e) {
-      debugPrint('NotificationService: markRead failed | error=$e');
-      // Tentative legacy
       try {
-        await _client
-            .from(_table)
-            .update({'seen': true})
-            .eq('id', notificationId)
-            .eq('user_id', uid);
-      } catch (_) {}
+        await _client.from(_table).update({'read': true}).eq('id', notificationId).eq('user_id', uid);
+        return;
+      } catch (e) {
+        debugPrint('NotificationService: markRead set read=true failed, retry legacy. err=$e');
+      }
+      await _client.from(_table).update({'seen': true}).eq('id', notificationId).eq('user_id', uid);
+    } catch (e) {
+      debugPrint('NotificationService: markRead failed uid=$uid id=$notificationId err=$e');
     }
   }
 
-  /// Marquer toutes les notifications comme lues
   Future<void> markAllRead(String uid) async {
     try {
-      await _client
-          .from(_table)
-          .update({'read': true})
-          .eq('user_id', uid)
-          .eq('read', false);
-    } catch (e) {
-<<<<<<< Updated upstream
-      debugPrint('NotificationService: markAllRead failed | error=$e');
       try {
-        await _client
-            .from(_table)
-            .update({'seen': true})
-            .eq('user_id', uid)
-            .eq('seen', false);
-      } catch (_) {}
-    }
-  }
-
-  /// Supprimer une notification
-  Future<void> delete(String notificationId, String uid) async {
-    try {
-      await _client
-          .from(_table)
-          .delete()
-          .eq('id', notificationId)
-          .eq('user_id', uid);
+        await _client.from(_table).update({'read': true}).eq('user_id', uid).eq('read', false);
+        return;
+      } catch (e) {
+        debugPrint('NotificationService: markAllRead set read=true failed, retry legacy. err=$e');
+      }
+      await _client.from(_table).update({'seen': true}).eq('user_id', uid).eq('seen', false);
     } catch (e) {
-      debugPrint('NotificationService: delete failed | error=$e');
-=======
-      debugPrint('NotificationService: markAllRead failed err=$e');
->>>>>>> Stashed changes
+      debugPrint('NotificationService: markAllRead failed uid=$uid err=$e');
     }
-  }
-
-  // ==========================================================================
-  // MÉTHODES PRIVÉES
-  // ==========================================================================
-
-  Map<String, dynamic> _normalizeRow(Map<String, dynamic> row) {
-    final data = row['data'] is Map<String, dynamic>
-        ? row['data'] as Map<String, dynamic>
-        : row['payload'] is Map<String, dynamic>
-            ? row['payload'] as Map<String, dynamic>
-            : {};
-
-    final read = (row['read'] as bool?) ?? (row['seen'] as bool?) ?? false;
-
-    return {
-      'id': row['id'],
-      'user_id': row['user_id'],
-      'type': (row['type'] ?? row['kind'] ?? 'generic').toString(),
-      'title': (row['title'] ?? 'Notification').toString(),
-      'body': (row['body'] ?? row['message'] ?? row['content'] ?? '').toString(),
-      'read': read,
-      'data': data,
-      'created_at': row['created_at'],
-    };
   }
 }
