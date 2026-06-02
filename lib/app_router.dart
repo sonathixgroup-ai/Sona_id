@@ -3,7 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:thix_id/auth/auth_controller.dart';
 
-// Pages principales
+// Pages
 import 'presentation/home/home_page.dart';
 import 'presentation/auth/login_page.dart';
 import 'presentation/auth/personal_registration_page.dart';
@@ -80,29 +80,74 @@ class AppRouter {
       redirect: (context, state) {
         final isLoggedIn = auth.isAuthenticated;
         final location = state.matchedLocation;
-        final isAuthPage = [AppRoutes.login, AppRoutes.personalReg, AppRoutes.enterpriseReg].contains(location);
 
-        if (!isLoggedIn && !isAuthPage) return AppRoutes.login;
-        if (isLoggedIn && isAuthPage) return AppRoutes.userDashboard;
+        final isAuthPage = location == AppRoutes.login ||
+            location == AppRoutes.personalReg ||
+            location == AppRoutes.enterpriseReg;
 
+        if (!isLoggedIn && !isAuthPage) {
+          return AppRoutes.login;
+        }
+        if (isLoggedIn && isAuthPage) {
+          return AppRoutes.userDashboard;
+        }
         return null;
       },
       routes: [
-        GoRoute(path: AppRoutes.home, pageBuilder: (context, state) => const NoTransitionPage(child: HomePagePremium())),
-        GoRoute(path: AppRoutes.login, pageBuilder: (context, state) => const NoTransitionPage(child: LoginPage())),
-        GoRoute(path: AppRoutes.personalReg, pageBuilder: (context, state) => const NoTransitionPage(child: PersonalRegistrationPage())),
-        GoRoute(path: AppRoutes.enterpriseReg, pageBuilder: (context, state) => const NoTransitionPage(child: EnterpriseRegistrationPage())),
-        GoRoute(path: AppRoutes.userDashboard, pageBuilder: (context, state) => const NoTransitionPage(child: UserDashboardPage())),
-        GoRoute(path: AppRoutes.enterpriseDashboard, pageBuilder: (context, state) => const NoTransitionPage(child: EnterpriseDashboardPage())),
-        GoRoute(path: AppRoutes.chat, pageBuilder: (context, state) => const NoTransitionPage(child: ThixChatPage())),
-        GoRoute(path: AppRoutes.vault, pageBuilder: (context, state) => const NoTransitionPage(child: DocumentVaultPage())),
-        GoRoute(path: AppRoutes.settings, pageBuilder: (context, state) => const NoTransitionPage(child: SettingsPage())),
-        GoRoute(path: AppRoutes.network, pageBuilder: (context, state) => const NoTransitionPage(child: NetworkPage())),
-        GoRoute(path: AppRoutes.jobs, pageBuilder: (context, state) => const NoTransitionPage(child: JobsPage())),
-        GoRoute(path: AppRoutes.opportunities, pageBuilder: (context, state) => const NoTransitionPage(child: OpportunitiesPage())),
-        GoRoute(path: AppRoutes.events, pageBuilder: (context, state) => const NoTransitionPage(child: EventsPage())),
+        GoRoute(
+          path: AppRoutes.home,
+          pageBuilder: (context, state) => const NoTransitionPage(child: HomePagePremium()),
+        ),
+        GoRoute(
+          path: AppRoutes.login,
+          pageBuilder: (context, state) => const NoTransitionPage(child: LoginPage()),
+        ),
+        GoRoute(
+          path: AppRoutes.personalReg,
+          pageBuilder: (context, state) => const NoTransitionPage(child: PersonalRegistrationPage()),
+        ),
+        GoRoute(
+          path: AppRoutes.enterpriseReg,
+          pageBuilder: (context, state) => const NoTransitionPage(child: EnterpriseRegistrationPage()),
+        ),
+        GoRoute(
+          path: AppRoutes.userDashboard,
+          pageBuilder: (context, state) => const NoTransitionPage(child: UserDashboardPage()),
+        ),
+        GoRoute(
+          path: AppRoutes.enterpriseDashboard,
+          pageBuilder: (context, state) => const NoTransitionPage(child: EnterpriseDashboardPage()),
+        ),
+        GoRoute(
+          path: AppRoutes.chat,
+          pageBuilder: (context, state) => const NoTransitionPage(child: ThixChatPage()),
+        ),
+        GoRoute(
+          path: AppRoutes.vault,
+          pageBuilder: (context, state) => const NoTransitionPage(child: DocumentVaultPage()),
+        ),
+        GoRoute(
+          path: AppRoutes.settings,
+          pageBuilder: (context, state) => const NoTransitionPage(child: SettingsPage()),
+        ),
+        GoRoute(
+          path: AppRoutes.network,
+          pageBuilder: (context, state) => const NoTransitionPage(child: NetworkPage()),
+        ),
+        GoRoute(
+          path: AppRoutes.jobs,
+          pageBuilder: (context, state) => const NoTransitionPage(child: JobsPage()),
+        ),
+        GoRoute(
+          path: AppRoutes.opportunities,
+          pageBuilder: (context, state) => const NoTransitionPage(child: OpportunitiesPage()),
+        ),
+        GoRoute(
+          path: AppRoutes.events,
+          pageBuilder: (context, state) => const NoTransitionPage(child: EventsPage()),
+        ),
 
-        // === EVENTS ===
+        // ==================== EVENTS ROUTES ====================
         GoRoute(
           path: '/events/:eventId',
           pageBuilder: (context, state) {
@@ -114,7 +159,8 @@ class AppRouter {
           path: '/events/:eventId/register',
           pageBuilder: (context, state) {
             final eventId = state.pathParameters['eventId'] ?? '';
-            return NoTransitionPage(child: EventRegisterPage(eventId: eventId));
+            // Note: Tu peux passer l'event complet via extra si besoin
+            return NoTransitionPage(child: EventRegisterPage(event: EventItem.placeholder(id: eventId))); // À adapter si nécessaire
           },
         ),
         GoRoute(
@@ -122,7 +168,9 @@ class AppRouter {
           pageBuilder: (context, state) {
             final eventId = state.pathParameters['eventId'] ?? '';
             final registrationId = state.pathParameters['registrationId'] ?? '';
-            return NoTransitionPage(child: EventTicketPage(eventId: eventId, registrationId: registrationId));
+            return NoTransitionPage(
+              child: EventTicketPage(eventId: eventId, registrationId: registrationId),
+            );
           },
         ),
         GoRoute(
@@ -130,9 +178,15 @@ class AppRouter {
           pageBuilder: (context, state) => const NoTransitionPage(child: UserEventDashboardPage()),
         ),
 
-        // Autres
-        GoRoute(path: AppRoutes.education, pageBuilder: (context, state) => const NoTransitionPage(child: EducationPage())),
-        GoRoute(path: AppRoutes.trainingHome, pageBuilder: (context, state) => const NoTransitionPage(child: TrainingHomePage())),
+        // Autres routes
+        GoRoute(
+          path: AppRoutes.education,
+          pageBuilder: (context, state) => const NoTransitionPage(child: EducationPage()),
+        ),
+        GoRoute(
+          path: AppRoutes.trainingHome,
+          pageBuilder: (context, state) => const NoTransitionPage(child: TrainingHomePage()),
+        ),
         GoRoute(
           path: AppRoutes.admin,
           pageBuilder: (context, state) => const NoTransitionPage(child: AdminPage()),
