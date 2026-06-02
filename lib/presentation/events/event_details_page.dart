@@ -40,7 +40,6 @@ class _EventDetailsPageState extends State<EventDetailsPage> {
       } else {
         _event = await _eventService.getEventById(widget.eventId);
       }
-
       await _checkTicketStatus();
     } catch (e) {
       debugPrint('Error loading event: $e');
@@ -62,7 +61,6 @@ class _EventDetailsPageState extends State<EventDetailsPage> {
       context.push('/login');
       return;
     }
-
     if (_event == null) return;
 
     setState(() => _isRegistering = true);
@@ -73,18 +71,12 @@ class _EventDetailsPageState extends State<EventDetailsPage> {
         eventId: _event!.id,
       );
 
-      if (!mounted) return;
-
-      if (success) {
+      if (success && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Réservation réussie !'), backgroundColor: Colors.green),
         );
         await _checkTicketStatus();
-        if (mounted) setState(() {});
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Vous avez déjà un billet'), backgroundColor: Colors.orange),
-        );
+        setState(() {});
       }
     } catch (e) {
       if (mounted) {
@@ -112,10 +104,7 @@ class _EventDetailsPageState extends State<EventDetailsPage> {
     }
 
     if (_event == null) {
-      return Scaffold(
-        appBar: AppBar(),
-        body: const Center(child: Text('Événement introuvable')),
-      );
+      return Scaffold(appBar: AppBar(), body: const Center(child: Text('Événement introuvable')));
     }
 
     final event = _event!;
@@ -150,18 +139,6 @@ class _EventDetailsPageState extends State<EventDetailsPage> {
                   const Text("Description", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 10),
                   Text(event.description, style: const TextStyle(height: 1.6)),
-                  const SizedBox(height: 30),
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.confirmation_number, color: Colors.blue),
-                        const SizedBox(width: 12),
-                        Expanded(child: Text(event.priceLabel, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blue))),
-                      ],
-                    ),
-                  ),
                   const SizedBox(height: 120),
                 ],
               ),
@@ -178,7 +155,7 @@ class _EventDetailsPageState extends State<EventDetailsPage> {
             height: 55,
             child: _hasTicket
                 ? ElevatedButton.icon(
-                    onPressed: () => context.push('/events/user-dashboard'),
+                    onPressed: () => context.push('/events/me'),
                     icon: const Icon(Icons.confirmation_number),
                     label: const Text("Voir mon billet"),
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
