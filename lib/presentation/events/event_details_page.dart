@@ -20,7 +20,7 @@ class EventDetailsPage extends StatefulWidget {
 }
 
 class _EventDetailsPageState extends State<EventDetailsPage> {
-  late final EventService _eventService = EventService();
+  late final EventService _eventService = EventService(Supabase.instance.client);
 
   EventItem? _event;
   bool _isLoading = true;
@@ -90,11 +90,11 @@ class _EventDetailsPageState extends State<EventDetailsPage> {
   }
 
   String _formatDate(DateTime date) {
-    return '\( {date.day.toString().padLeft(2, '0')}/ \){date.month.toString().padLeft(2, '0')}/${date.year}';
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
   }
 
   String _formatTime(DateTime date) {
-    return '\( {date.hour.toString().padLeft(2, '0')}: \){date.minute.toString().padLeft(2, '0')}';
+    return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   }
 
   @override
