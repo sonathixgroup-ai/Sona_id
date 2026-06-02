@@ -384,7 +384,7 @@ class AppRouter {
           pageBuilder: (context, state) {
             final eventId = state.pathParameters['eventId'] ?? '';
             final registered = (state.uri.queryParameters['registered'] ?? '').trim() == '1';
-            return NoTransitionPage(child: EventDetailsPage(eventId: eventId, registered: registered));
+            return NoTransitionPage(child: EventDetailsPage(eventId: eventId));
           },
         ),
         GoRoute(
@@ -392,7 +392,7 @@ class AppRouter {
           name: 'eventRegister',
           pageBuilder: (context, state) {
             final eventId = state.pathParameters['eventId'] ?? '';
-            return NoTransitionPage(child: EventRegisterPage(eventId: eventId));
+            return NoTransitionPage(child: EventDetailsPage(eventId: eventId));
           },
         ),
         GoRoute(
