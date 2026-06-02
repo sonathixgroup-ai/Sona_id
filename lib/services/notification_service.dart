@@ -9,65 +9,54 @@ class NotificationService {
   NotificationService({SupabaseClient? client})
       : _client = client ?? Supabase.instance.client;
 
-  Map<String, dynamic> _normalizeRow(Map<String, dynamic> r) {
-    final data = (r['data'] is Map)
-        ? (r['data'] as Map).cast<String, dynamic>()
-        : const <String, dynamic>{};
-
+  Map<String, dynamic> _normalize(Map<String, dynamic> row) {
     return {
-      'id': r['id'],
-      'user_id': r['user_id'],
-      'type': (r['type'] ?? 'generic').toString(),
-      'title': (r['title'] ?? 'Notification').toString(),
-      'body': (r['body'] ?? r['message'] ?? '').toString(),
-      'read': r['read'] ?? r['seen'] ?? false,
-      'data': data,
-      'created_at': r['created_at'],
+      'id': row['id'],
+      'user_id': row['user_id'],
+      'type': row['type']?.toString() ?? 'generic',
+      'title': row['title']?.toString() ?? 'Notification',
+      'body': row['body']?.toString() ?? row['message']?.toString() ?? '',
+      'read': row['read'] ?? row['seen'] ?? false,
+      'data': row['data'] ?? {},
+      'created_at': row['created_at'],
     };
   }
 
-  /// Real-time notifications stream with polling fallback
+  /// Stream principal des notifications (realtime + fallback polling)
   Stream<List<Map<String, dynamic>>> streamForUser(String uid) {
-    late final StreamController<List<Map<String, dynamic>>> controller;
-    Timer? pollTimer;
+    final controller = StreamController<List<Map<String, dynamic>>>.broadcast();
     RealtimeChannel? channel;
-    bool isCancelled = false;
+    Timer? pollTimer;
+    bool cancelled = false;
 
-    Future<void> emitLatest() async {
+    Future<void> fetchAndEmit() async {
+      if (cancelled) return;
       try {
-        final response = await _client
+        final data = await _client
             .from(_table)
             .select()
             .eq('user_id', uid)
             .order('created_at', ascending: false)
             .limit(50);
 
-        final list = (response as List)
-            .map((e) => _normalizeRow(e as Map<String, dynamic>))
+        final normalized = (data as List)
+            .map((e) => _normalize(e as Map<String, dynamic>))
             .toList();
 
-        controller.add(list);
+        controller.add(normalized);
       } catch (e) {
-        debugPrint('NotificationService: emitLatest error: $e');
-        controller.add(const []);
+        debugPrint('NotificationService fetch error: $e');
+        controller.add([]);
       }
     }
 
+    // Polling fallback
     void startPolling() {
       pollTimer?.cancel();
-      pollTimer = Timer.periodic(const Duration(seconds: 4), (_) => emitLatest());
+      pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => fetchAndEmit());
     }
 
-    controller = StreamController.broadcast(
-      onListen: () => emitLatest(),
-      onCancel: () {
-        isCancelled = true;
-        pollTimer?.cancel();
-        if (channel != null) _client.removeChannel(channel!);
-      },
-    );
-
-    // Setup realtime
+    // Realtime
     try {
       channel = _client.channel('notifications:$uid');
 
@@ -81,33 +70,41 @@ class NotificationService {
               column: 'user_id',
               value: uid,
             ),
-            callback: (payload) => emitLatest(),
+            callback: (_) => fetchAndEmit(),
           )
           .subscribe(
-            (status, error) {
-              debugPrint('NotificationService subscribe: $status, error: $error');
-              if (status == RealtimeSubscribeStatus.channelError ||
-                  (error?.toString().toLowerCase().contains('permission') ?? false)) {
-                startPolling();
-              }
-            },
-          );
+        (status, error) {
+          debugPrint('NotificationService subscribe: $status | error: $error');
+          if (status == RealtimeSubscribeStatus.channelError || error != null) {
+            startPolling();
+          }
+        },
+      );
     } catch (e) {
-      debugPrint('Realtime setup failed, using polling: $e');
+      debugPrint('Realtime failed, using polling: $e');
       startPolling();
     }
+
+    // Premier chargement
+    fetchAndEmit();
+
+    controller.onCancel = () {
+      cancelled = true;
+      pollTimer?.cancel();
+      if (channel != null) _client.removeChannel(channel!);
+    };
 
     return controller.stream;
   }
 
-  // Unread count
+  // Nombre de notifications non lues
   Stream<int> streamUnreadCount(String uid) {
     return streamForUser(uid)
-        .map((rows) => rows.where((r) => !(r['read'] as bool? ?? false)).length)
+        .map((list) => list.where((n) => n['read'] == false).length)
         .distinct();
   }
 
-  // Create notification
+  // Créer une notification
   Future<void> add({
     required String toUid,
     required String type,
@@ -129,32 +126,19 @@ class NotificationService {
     }
   }
 
-  // Mark as read
-  Future<void> markRead({
-    required String uid,
-    required String notificationId,
-  }) async {
-    try {
-      await _client
-          .from(_table)
-          .update({'read': true})
-          .eq('id', notificationId)
-          .eq('user_id', uid);
-    } catch (e) {
-      debugPrint('NotificationService.markRead error: $e');
-    }
+  Future<void> markRead({required String uid, required String notificationId}) async {
+    await _client
+        .from(_table)
+        .update({'read': true})
+        .eq('id', notificationId)
+        .eq('user_id', uid);
   }
 
-  // Mark all read
   Future<void> markAllRead(String uid) async {
-    try {
-      await _client
-          .from(_table)
-          .update({'read': true})
-          .eq('user_id', uid)
-          .eq('read', false);
-    } catch (e) {
-      debugPrint('NotificationService.markAllRead error: $e');
-    }
+    await _client
+        .from(_table)
+        .update({'read': true})
+        .eq('user_id', uid)
+        .eq('read', false);
   }
 }
