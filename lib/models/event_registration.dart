@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/event_item.dart';
+import '../../models/event_registration.dart';
 import '../../services/event_service.dart';
 
 class EventRegistrationPage extends StatefulWidget {
@@ -14,112 +15,89 @@ class EventRegistrationPage extends StatefulWidget {
   });
 
   @override
-  State<EventRegistrationPage> createState() =>
-      _EventRegistrationPageState();
+  State<EventRegistrationPage> createState() => _EventRegistrationPageState();
 }
 
-class _EventRegistrationPageState
-    extends State<EventRegistrationPage> {
-  late final EventService _eventService;
+class _EventRegistrationPageState extends State<EventRegistrationPage> {
+  late final EventService _eventService = EventService();
 
   bool _loading = true;
   bool _submitting = false;
 
   EventItem? _event;
-
   int _tickets = 1;
-
-  final TextEditingController _noteController =
-      TextEditingController();
+  final TextEditingController _noteController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-
-    _eventService =
-        EventService(Supabase.instance.client);
-
     _loadEvent();
   }
 
   Future<void> _loadEvent() async {
-    final event =
-        await _eventService.getEventById(widget.eventId);
+    try {
+      final event = await _eventService.getEventById(widget.eventId);
+      if (!mounted) return;
 
-    if (!mounted) return;
-
-    setState(() {
-      _event = event;
-      _loading = false;
-    });
+      setState(() {
+        _event = event;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Impossible de charger l\'événement')),
+      );
+    }
   }
 
   double get _totalPrice {
     if (_event == null) return 0;
-
-    return _event!.price * _tickets;
+    return (_event!.price ?? 0) * _tickets;
   }
 
   Future<void> _register() async {
-    final user =
-        Supabase.instance.client.auth.currentUser;
-
+    final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content:
-              Text('Veuillez vous connecter'),
-        ),
+        const SnackBar(content: Text('Veuillez vous connecter')),
       );
       return;
     }
 
     if (_event == null) return;
 
-    setState(() {
-      _submitting = true;
-    });
+    setState(() => _submitting = true);
 
     try {
-      final ticketCode =
-          'THIX-${DateTime.now().millisecondsSinceEpoch}';
-
-      final registrationId = await Supabase
-          .instance.client
-          .from('thix_event_tickets')
-          .insert({
-        'user_id': user.id,
-        'event_id': _event!.id,
-        'ticket_code': ticketCode,
-        'attendee_thix_id': user.id,
-        'tickets': _tickets,
-        'note': _noteController.text.trim(),
-        'status': 'valid',
-        'created_at':
-            DateTime.now().toIso8601String(),
-      })
-          .select('id')
-          .single();
-
-      if (!mounted) return;
-
-      context.go(
-        '/events/${_event!.id}/ticket/${registrationId['id']}',
+      final registration = await _eventService.createRegistration(
+        userId: user.id,
+        eventId: _event!.id,
+        metadata: {
+          'tickets': _tickets,
+          'note': _noteController.text.trim(),
+        },
       );
+
+      if (registration != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Réservation confirmée avec succès !')),
+        );
+
+        // Redirection vers la page du ticket
+        context.go('/events/\( {_event!.id}/ticket/ \){registration.id}');
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Erreur: $e',
-          ),
-        ),
-      );
-    }
-
-    if (mounted) {
-      setState(() {
-        _submitting = false;
-      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur lors de la réservation: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
     }
   }
 
@@ -127,64 +105,39 @@ class _EventRegistrationPageState
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
+        body: Center(child: CircularProgressIndicator()),
       );
     }
 
     if (_event == null) {
       return const Scaffold(
-        body: Center(
-          child: Text(
-            'Événement introuvable',
-          ),
-        ),
+        body: Center(child: Text('Événement introuvable')),
       );
     }
 
     return Scaffold(
       backgroundColor: const Color(0xffF8FAFC),
-
-      appBar: AppBar(
-        title: const Text(
-          'Réserver',
-        ),
-      ),
-
+      appBar: AppBar(title: const Text('Réserver')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
             _buildEventCard(),
-
             const SizedBox(height: 24),
-
             _buildTicketSelector(),
-
             const SizedBox(height: 24),
-
             _buildNoteField(),
-
             const SizedBox(height: 24),
-
             _buildPriceSummary(),
-
             const SizedBox(height: 32),
-
             SizedBox(
               width: double.infinity,
               height: 55,
               child: FilledButton(
-                onPressed:
-                    _submitting ? null : _register,
+                onPressed: _submitting ? null : _register,
                 child: _submitting
-                    ? const CircularProgressIndicator(
-                        color: Colors.white,
-                      )
-                    : const Text(
-                        'Confirmer la réservation',
-                      ),
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text('Confirmer la réservation'),
               ),
             ),
           ],
@@ -198,48 +151,29 @@ class _EventRegistrationPageState
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             _event!.title,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),
           Row(
             children: [
-              const Icon(
-                Icons.location_on,
-                size: 18,
-              ),
+              const Icon(Icons.location_on, size: 18),
               const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  _event!.location,
-                ),
-              ),
+              Expanded(child: Text(_event!.location)),
             ],
           ),
           const SizedBox(height: 8),
           Row(
             children: [
-              const Icon(
-                Icons.calendar_month,
-                size: 18,
-              ),
+              const Icon(Icons.calendar_month, size: 18),
               const SizedBox(width: 6),
-              Text(
-                _formatDate(
-                  _event!.startsAt,
-                ),
-              ),
+              Text(_formatDate(_event!.startsAt)),
             ],
           ),
         ],
@@ -252,51 +186,24 @@ class _EventRegistrationPageState
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Nombre de billets',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
-          ),
+          const Text('Nombre de billets', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           const SizedBox(height: 16),
           Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               IconButton(
-                onPressed: _tickets > 1
-                    ? () {
-                        setState(() {
-                          _tickets--;
-                        });
-                      }
-                    : null,
-                icon: const Icon(
-                  Icons.remove_circle,
-                ),
+                onPressed: _tickets > 1 ? () => setState(() => _tickets--) : null,
+                icon: const Icon(Icons.remove_circle),
               ),
-              Text(
-                _tickets.toString(),
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              Text(_tickets.toString(), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
               IconButton(
-                onPressed: () {
-                  setState(() {
-                    _tickets++;
-                  });
-                },
-                icon: const Icon(
-                  Icons.add_circle,
-                ),
+                onPressed: () => setState(() => _tickets++),
+                icon: const Icon(Icons.add_circle),
               ),
             ],
           ),
@@ -310,8 +217,7 @@ class _EventRegistrationPageState
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(20),
       ),
       child: TextField(
         controller: _noteController,
@@ -329,36 +235,21 @@ class _EventRegistrationPageState
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
         children: [
-          _row(
-            'Prix unitaire',
-            _event!.priceLabel,
-          ),
-          const SizedBox(height: 10),
-          _row(
-            'Billets',
-            _tickets.toString(),
-          ),
+          _row('Prix unitaire', '${_event!.price} USD'),
+          const SizedBox(height: 8),
+          _row('Nombre de billets', _tickets.toString()),
           const Divider(height: 30),
-          _row(
-            'TOTAL',
-            '${_totalPrice.toStringAsFixed(2)} USD',
-            bold: true,
-          ),
+          _row('TOTAL', '${_totalPrice.toStringAsFixed(2)} USD', bold: true),
         ],
       ),
     );
   }
 
-  Widget _row(
-    String label,
-    String value, {
-    bool bold = false,
-  }) {
+  Widget _row(String label, String value, {bool bold = false}) {
     return Row(
       children: [
         Text(label),
@@ -366,9 +257,7 @@ class _EventRegistrationPageState
         Text(
           value,
           style: TextStyle(
-            fontWeight: bold
-                ? FontWeight.bold
-                : FontWeight.normal,
+            fontWeight: bold ? FontWeight.bold : FontWeight.normal,
             fontSize: bold ? 18 : 14,
           ),
         ),
@@ -377,6 +266,12 @@ class _EventRegistrationPageState
   }
 
   String _formatDate(DateTime date) {
-    return "${date.day}/${date.month}/${date.year}";
+    return "\( {date.day}/ \){date.month}/${date.year}";
+  }
+
+  @override
+  void dispose() {
+    _noteController.dispose();
+    super.dispose();
   }
 }
