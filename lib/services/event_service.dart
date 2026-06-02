@@ -7,33 +7,19 @@ class EventService {
   final SupabaseClient _supabase;
   static const String eventsTable = 'events';
   static const String registrationsTable = 'event_registrations';
-  static const String ticketsTable = 'thix_event_tickets';
 
   EventService({SupabaseClient? client})
       : _supabase = client ?? Supabase.instance.client;
 
-  // ===========================================================================
-  // EVENTS
-  // ===========================================================================
-
   Future<EventItem?> getEventById(String eventId) async {
     try {
-      final data = await _supabase
-          .from(eventsTable)
-          .select()
-          .eq('id', eventId)
-          .single();
-
+      final data = await _supabase.from(eventsTable).select().eq('id', eventId).single();
       return EventItem.fromJson(data);
     } catch (e) {
       debugPrint('getEventById error: $e');
       return null;
     }
   }
-
-  // ===========================================================================
-  // REGISTRATIONS
-  // ===========================================================================
 
   Future<bool> hasUserTicket(String userId, String eventId) async {
     try {
@@ -44,7 +30,24 @@ class EventService {
           .eq('event_id', eventId)
           .limit(1);
       return res.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> registerForEvent({
+    required String userId,
+    required String eventId,
+  }) async {
+    try {
+      await _supabase.from(registrationsTable).insert({
+        'user_id': userId,
+        'event_id': eventId,
+        'status': 'confirmed',
+      });
+      return true;
     } catch (e) {
+      debugPrint('registerForEvent error: $e');
       return false;
     }
   }
@@ -55,7 +58,7 @@ class EventService {
     Map<String, dynamic>? metadata,
   }) async {
     try {
-      final response = await _supabase
+      final res = await _supabase
           .from(registrationsTable)
           .insert({
             'user_id': userId,
@@ -66,61 +69,12 @@ class EventService {
           .select()
           .single();
 
-      return EventRegistration.fromJson(response);
+      return EventRegistration.fromJson(res);
     } catch (e) {
       debugPrint('createRegistration error: $e');
       return null;
     }
   }
-
-  Future<List<EventRegistration>> getUserRegistrations(String userId) async {
-    try {
-      final data = await _supabase
-          .from(registrationsTable)
-          .select()
-          .eq('user_id', userId)
-          .order('created_at', ascending: false);
-
-      return (data as List)
-          .map((json) => EventRegistration.fromJson(json))
-          .toList();
-    } catch (e) {
-      debugPrint('getUserRegistrations error: $e');
-      return [];
-    }
-  }
-
-  // ===========================================================================
-  // TICKETS
-  // ===========================================================================
-
-  Future<Map<String, dynamic>?> getTicketByCode(String ticketCode) async {
-    try {
-      final data = await _supabase
-          .from(ticketsTable)
-          .select()
-          .eq('ticket_code', ticketCode)
-          .maybeSingle();
-      return data;
-    } catch (e) {
-      debugPrint('getTicketByCode error: $e');
-      return null;
-    }
-  }
-
-  Future<bool> isTicketValid(String ticketCode) async {
-    try {
-      final ticket = await getTicketByCode(ticketCode);
-      if (ticket == null) return false;
-      return ticket['status'] == 'valid';
-    } catch (_) {
-      return false;
-    }
-  }
-
-  // ===========================================================================
-  // PROMO CODES
-  // ===========================================================================
 
   Future<double?> validatePromoCode({
     required String code,
@@ -138,9 +92,7 @@ class EventService {
       if (response == null) return null;
 
       final expiry = DateTime.tryParse(response['valid_until']?.toString() ?? '');
-      if (expiry == null || expiry.isBefore(DateTime.now())) {
-        return null;
-      }
+      if (expiry == null || expiry.isBefore(DateTime.now())) return null;
 
       return (response['discount_percent'] as num?)?.toDouble();
     } catch (e) {
