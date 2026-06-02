@@ -1,153 +1,135 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:thix_id/auth/auth_controller.dart';
 import 'package:thix_id/models/app_user.dart';
-import 'package:thix_id/models/event_item.dart';
 
-// Pages principales
+// Pages
 import 'presentation/home/home_page.dart';
 import 'presentation/auth/login_page.dart';
+import 'presentation/auth/personal_registration_page.dart';
+import 'presentation/auth/enterprise_registration_page.dart';
+import 'presentation/payment/payment_gateway_page.dart';
+import 'presentation/payment/activation_receipt_page.dart';
+import 'presentation/profile/public_profile_page.dart';
+import 'presentation/dashboard/user_dashboard_page.dart';
+import 'presentation/enterprise/enterprise_dashboard_page.dart';
+import 'presentation/chat/thix_chat_page.dart';
+import 'presentation/vault/document_vault_page.dart';
+import 'presentation/settings/settings_page.dart';
+import 'presentation/network/network_page.dart';
+import 'presentation/jobs/jobs_page.dart';
+import 'presentation/jobs/job_apply_page.dart';
+import 'presentation/jobs/job_details_page.dart';
+import 'presentation/jobs/job_dashboard_page.dart';
+import 'presentation/recruiter/recruiter_portal_page.dart';
+import 'presentation/opportunities/opportunities_page.dart';
+import 'presentation/opportunities/opportunity_apply_page.dart';
+import 'presentation/opportunities/opportunity_details_page.dart';
+import 'presentation/events/events_page.dart';
+import 'presentation/events/event_details_page.dart';
+import 'presentation/events/event_register_page.dart';
+import 'presentation/events/event_ticket_page.dart';
+import 'presentation/events/user_event_dashboard_page.dart';
+import 'presentation/education/education_page.dart';
+import 'presentation/training/training_home_page.dart';
+import 'presentation/training/training_details_page.dart';
+import 'presentation/training/learning_dashboard_page.dart';
+import 'presentation/training/lesson_player_page.dart';
+import 'presentation/admin/admin_page.dart';
+import 'presentation/thix_market/thix_market_page.dart';
+import 'presentation/thix_sante/thix_sante_page.dart';
+import 'presentation/thix_reservation/thix_reservation_page.dart';
+import 'presentation/thix_money/thix_money_page.dart';
+import 'presentation/thix_media/thix_media_page.dart';
+import 'presentation/admin/pages/admin_media_page.dart';
 
-// Pages Events
-import 'package:thix_id/presentation/events/events_page.dart';
-import 'package:thix_id/presentation/events/event_details_page.dart';
-import 'package:thix_id/presentation/events/event_register_page.dart';
-import 'package:thix_id/presentation/events/event_ticket_page.dart';
-import 'package:thix_id/presentation/events/event_checkout_page.dart';
-import 'package:thix_id/presentation/events/user_event_dashboard_page.dart';
-
-// Pages Media
-import 'package:thix_id/presentation/thix_media/thix_media_page.dart';
-import 'package:thix_id/presentation/admin/pages/admin_media_page.dart';
-
-// ============================================================================
-// Page sans transition
-// ============================================================================
 class NoTransitionPage<T> extends Page<T> {
   final Widget child;
   const NoTransitionPage({required this.child, super.key});
 
   @override
   Route<T> createRoute(BuildContext context) {
-    return MaterialPageRoute<T>(builder: (_) => child, settings: this);
+    return MaterialPageRoute(builder: (context) => child, settings: this);
   }
 }
 
-// ============================================================================
-// Constantes de routes
-// ============================================================================
 class AppRoutes {
   static const String home = '/';
   static const String login = '/login';
-  static const String thixMedia = '/thix-media';
-  static const String adminMedia = '/admin/media';
+  static const String personalReg = '/personal-reg';
+  static const String enterpriseReg = '/enterprise-reg';
+  static const String userDashboard = '/user-dashboard';
+  static const String enterpriseDashboard = '/enterprise-dashboard';
+  static const String chat = '/chat';
+  static const String vault = '/vault';
+  static const String settings = '/settings';
+  static const String network = '/network';
+  static const String jobs = '/jobs';
+  static const String opportunities = '/opportunities';
   static const String events = '/events';
-  static const String userEventsDashboard = '/events/me';
-
-  static String eventDetails(String eventId) => '/events/$eventId';
-  static String eventRegister(String eventId) => '/events/$eventId/register';
-  static String eventCheckout(String eventId) => '/events/$eventId/checkout';
-  static String eventTicket(String eventId, String registrationId) =>
-      '/events/$eventId/ticket/$registrationId';
+  static const String education = '/education';
+  static const String trainingHome = '/training';
+  static const String admin = '/admin';
+  static const String thixMarket = '/market';
+  static const String thixSante = '/sante';
+  static const String reservation = '/reservation';
+  static const String thixMoney = '/thix-money';
+  static const String thixMedia = '/thix-media';
 }
 
-// ============================================================================
-// Routeur principal
-// ============================================================================
 class AppRouter {
-  static GoRouter create(AuthController auth, {Listenable? extraRefreshListenable}) {
-    final refresh = extraRefreshListenable ?? auth;
-
+  static GoRouter create(AuthController auth) {
     return GoRouter(
       initialLocation: AppRoutes.home,
-      refreshListenable: refresh,
+      refreshListenable: auth,
       redirect: (context, state) {
-        // Logique de redirection (à adapter selon vos besoins)
+        final isLoggedIn = auth.isAuthenticated;
+        final location = state.matchedLocation;
+
+        final isAuthPage = location == AppRoutes.login || 
+                          location == AppRoutes.personalReg || 
+                          location == AppRoutes.enterpriseReg;
+
+        if (!isLoggedIn && !isAuthPage) return AppRoutes.login;
+        if (isLoggedIn && isAuthPage) return AppRoutes.userDashboard;
+
         return null;
       },
       routes: [
-        // ---------- Accueil ----------
-        GoRoute(
-          path: AppRoutes.home,
-          name: 'home',
-          pageBuilder: (context, state) =>
-              const NoTransitionPage(child: HomePagePremium()),
-        ),
+        GoRoute(path: AppRoutes.home, pageBuilder: (context, state) => const NoTransitionPage(child: HomePagePremium())),
+        GoRoute(path: AppRoutes.login, pageBuilder: (context, state) => const NoTransitionPage(child: LoginPage())),
+        GoRoute(path: AppRoutes.personalReg, pageBuilder: (context, state) => const NoTransitionPage(child: PersonalRegistrationPage())),
+        GoRoute(path: AppRoutes.enterpriseReg, pageBuilder: (context, state) => const NoTransitionPage(child: EnterpriseRegistrationPage())),
+        GoRoute(path: AppRoutes.userDashboard, pageBuilder: (context, state) => const NoTransitionPage(child: UserDashboardPage())),
+        GoRoute(path: AppRoutes.enterpriseDashboard, pageBuilder: (context, state) => const NoTransitionPage(child: EnterpriseDashboardPage())),
+        GoRoute(path: AppRoutes.chat, pageBuilder: (context, state) => const NoTransitionPage(child: ThixChatPage())),
+        GoRoute(path: AppRoutes.vault, pageBuilder: (context, state) => const NoTransitionPage(child: DocumentVaultPage())),
+        GoRoute(path: AppRoutes.settings, pageBuilder: (context, state) => const NoTransitionPage(child: SettingsPage())),
+        GoRoute(path: AppRoutes.network, pageBuilder: (context, state) => const NoTransitionPage(child: NetworkPage())),
+        GoRoute(path: AppRoutes.jobs, pageBuilder: (context, state) => const NoTransitionPage(child: JobsPage())),
+        GoRoute(path: AppRoutes.opportunities, pageBuilder: (context, state) => const NoTransitionPage(child: OpportunitiesPage())),
+        GoRoute(path: AppRoutes.events, pageBuilder: (context, state) => const NoTransitionPage(child: EventsPage())),
 
-        // ---------- Authentification ----------
-        GoRoute(
-          path: AppRoutes.login,
-          name: 'login',
-          pageBuilder: (context, state) =>
-              const NoTransitionPage(child: LoginPage()),
-        ),
-
-        // ---------- Événements ----------
-        GoRoute(
-          path: AppRoutes.events,
-          name: 'events',
-          pageBuilder: (context, state) =>
-              const NoTransitionPage(child: EventsPage()),
-        ),
-
-        // Route fixe AVANT la route dynamique
-        GoRoute(
-          path: AppRoutes.userEventsDashboard,
-          name: 'userEventsDashboard',
-          pageBuilder: (context, state) =>
-              const NoTransitionPage(child: UserEventDashboardPage()),
-        ),
-
-        // Route dynamique : /events/:eventId
+        // === EVENTS ROUTES ===
         GoRoute(
           path: '/events/:eventId',
           name: 'eventDetails',
           pageBuilder: (context, state) {
             final eventId = state.pathParameters['eventId'] ?? '';
-            final registered = (state.uri.queryParameters['registered'] ?? '') == '1';
             return NoTransitionPage(
-              child: EventDetailsPage(
-                eventId: eventId,
-                registered: registered,
-              ),
+              child: EventDetailsPage(eventId: eventId),
             );
           },
         ),
-
-        // ✅ Route Register avec state.extra
         GoRoute(
           path: '/events/:eventId/register',
           name: 'eventRegister',
           pageBuilder: (context, state) {
-            final event = state.extra as EventItem;
-            return NoTransitionPage(
-              child: EventRegisterPage(event: event),
-            );
+            final eventId = state.pathParameters['eventId'] ?? '';
+            return NoTransitionPage(child: EventRegisterPage(eventId: eventId));
           },
         ),
-
-        // ✅ Route Checkout avec state.extra
-        GoRoute(
-          path: '/events/:eventId/checkout',
-          name: 'eventCheckout',
-          pageBuilder: (context, state) {
-            final data = state.extra as Map<String, dynamic>;
-            return NoTransitionPage(
-              child: EventCheckoutPage(
-                event: data['event'],
-                tickets: data['tickets'],
-                attendeeThixId: data['attendeeThixId'],
-                attendeeName: data['attendeeName'],
-                attendeeEmail: data['attendeeEmail'],
-                attendeePhone: data['attendeePhone'],
-                note: data['note'],
-              ),
-            );
-          },
-        ),
-
-        // /events/:eventId/ticket/:registrationId
         GoRoute(
           path: '/events/:eventId/ticket/:registrationId',
           name: 'eventTicket',
@@ -155,42 +137,21 @@ class AppRouter {
             final eventId = state.pathParameters['eventId'] ?? '';
             final registrationId = state.pathParameters['registrationId'] ?? '';
             return NoTransitionPage(
-              child: EventTicketPage(
-                eventId: eventId,
-                registrationId: registrationId,
-              ),
+              child: EventTicketPage(eventId: eventId, registrationId: registrationId),
             );
           },
         ),
+        GoRoute(
+          path: '/events/me',
+          name: 'userEventsDashboard',
+          pageBuilder: (context, state) => const NoTransitionPage(child: UserEventDashboardPage()),
+        ),
 
-        // ---------- Médias ----------
-        GoRoute(
-          path: AppRoutes.thixMedia,
-          name: 'thixMedia',
-          pageBuilder: (context, state) =>
-              const NoTransitionPage(child: ThixMediaPage()),
-        ),
-        GoRoute(
-          path: AppRoutes.adminMedia,
-          name: 'adminMedia',
-          pageBuilder: (context, state) =>
-              const NoTransitionPage(child: AdminMediaPage()),
-        ),
+        // Autres routes...
+        GoRoute(path: AppRoutes.education, pageBuilder: (context, state) => const NoTransitionPage(child: EducationPage())),
+        GoRoute(path: AppRoutes.trainingHome, pageBuilder: (context, state) => const NoTransitionPage(child: TrainingHomePage())),
+        GoRoute(path: AppRoutes.admin, pageBuilder: (context, state) => const NoTransitionPage(child: AdminPage())),
       ],
     );
-  }
-}
-
-// ============================================================================
-// Extension utilitaire
-// ============================================================================
-extension GoRouterBackHelpers on BuildContext {
-  void popOrGo(String fallbackLocation) {
-    final router = GoRouter.of(this);
-    if (router.canPop()) {
-      pop();
-      return;
-    }
-    go(fallbackLocation);
   }
 }
